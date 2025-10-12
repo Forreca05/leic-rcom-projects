@@ -64,13 +64,13 @@ int main(int argc, char *argv[])
     printf("Serial port %s opened\n", serialPort);
 
     // Install alarm handler
-    struct sigaction act = {0};
+   struct sigaction act = {0};
     act.sa_handler = &alarmHandler;
     if (sigaction(SIGALRM, &act, NULL) == -1)
     {
         perror("sigaction");
         exit(1);
-    }
+    } 
 
     // Build SET frame
     unsigned char set[5] = {FLAG, A, C_SET, A ^ C_SET, FLAG};

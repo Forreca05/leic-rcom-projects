@@ -2,6 +2,7 @@
 #include "serial_port.h"
 #include <unistd.h>
 #include <stdio.h>
+#include <signal.h>
 
 // MISC
 #define _POSIX_SOURCE 1
@@ -20,115 +21,118 @@ typedef enum {
     STOP
 } State;
 
-////////////////////////////////////////////////
-// LLOPEN
-////////////////////////////////////////////////
+int alarmTriggered = FALSE;
+int alarmCount = 0;
+int timeout = 0;
+int retransmitions = 0;
+
+void alarmHandler(int signal)
+{
+    alarmTriggered = TRUE;
+    alarmCount++;
+}
+
 int llopen(LinkLayer connectionParameters)
 {
-    // Open serial port
-    if (openSerialPort(connectionParameters.serialPort, connectionParameters.baudRate) < 0)
-        return -1;
+    State state = START;
+    if (openSerialPort(connectionParameters.serialPort, connectionParameters.baudRate) < 0) return -1;
 
     unsigned char byte;
-    int res;
-
-    // --- TRANSMITTER ---
-    if (connectionParameters.role == LlTx)
-    {
-        unsigned char set[] = {FLAG, A_TX, C_SET, A_TX ^ C_SET, FLAG};
-        State state = START;
-
-        printf("Tx: Sending SET...\n");
-        writeBytesSerialPort(set, 5);
-
-        // Espera UA
-        while (state != STOP)
-        {
-            res = readByteSerialPort(&byte);
-            if (res <= 0) continue;
-
-            switch (state)
-            {
-                case START:
-                    if (byte == FLAG) state = FLAG_RCV;
-                    break;
-                case FLAG_RCV:
-                    if (byte == A_TX) state = A_RCV;
-                    else if (byte != FLAG) state = START;
-                    break;
-                case A_RCV:
-                    if (byte == C_UA) state = C_RCV;
-                    else if (byte == FLAG) state = FLAG_RCV;
-                    else state = START;
-                    break;
-                case C_RCV:
-                    if (byte == (A_TX ^ C_UA)) state = BCC_OK;
-                    else if (byte == FLAG) state = FLAG_RCV;
-                    else state = START;
-                    break;
-                case BCC_OK:
-                    if (byte == FLAG) state = STOP;
-                    else state = START;
-                    break;
-                case STOP:
-                    break;
+    timeout = connectionParameters.timeout;
+    retransmitions = connectionParameters.nRetransmissions;
+    
+    switch(connectionParameters.role) {
+         // --- TRANSMITTER ---
+        case(LlTx): {
+            if (signal(SIGALRM, alarmHandler) == SIG_ERR) {
+                perror("signal");
+                exit(1);
             }
-        }
-        printf("Tx: UA received. Connection established!\n");
-    }
+            while (connectionParameters.nRetransmissions != 0 && state != STOP) {
+                unsigned char set[] = {FLAG, A_TX, C_SET, A_TX ^ C_SET, FLAG};
+                alarm(connectionParameters.timeout);
+                alarmTriggered = FALSE;
 
-    // --- RECEIVER ---
-    else if (connectionParameters.role == LlRx)
-    {
-        State state = START;
-
-        printf("Rx: Waiting for SET...\n");
-        while (state != STOP)
-        {
-            res = readByteSerialPort(&byte);
-            if (res <= 0) continue;
-
-            switch (state)
-            {
-                case START:
-                    if (byte == FLAG) state = FLAG_RCV;
-                    break;
-                case FLAG_RCV:
-                    if (byte == A_TX) state = A_RCV;
-                    else if (byte != FLAG) state = START;
-                    break;
-                case A_RCV:
-                    if (byte == C_SET) state = C_RCV;
-                    else if (byte == FLAG) state = FLAG_RCV;
-                    else state = START;
-                    break;
-                case C_RCV:
-                    if (byte == (A_TX ^ C_SET)) state = BCC_OK;
-                    else if (byte == FLAG) state = FLAG_RCV;
-                    else state = START;
-                    break;
-                case BCC_OK:
-                    if (byte == FLAG) state = STOP;
-                    else state = START;
-                    break;
-                case STOP:
-                    break;
+                while (alarmTriggered == FALSE && state != STOP) {
+                    int res = readByteSerialPort(&byte);
+                    if (res > 0) {
+                        switch (state) {
+                            case START:
+                                if (byte == FLAG) state = FLAG_RCV;
+                                break;
+                            case FLAG_RCV:
+                                if (byte == A_TX) state = A_RCV;
+                                else if (byte != FLAG) state = START;
+                                break;
+                            case A_RCV:
+                                if (byte == C_UA) state = C_RCV;
+                                else if (byte == FLAG) state = FLAG_RCV;
+                                else state = START;
+                                break;
+                            case C_RCV:
+                                if (byte == (A_TX ^ C_UA)) state = BCC_OK;
+                                else if (byte == FLAG) state = FLAG_RCV;
+                                else state = START;
+                                break;
+                            case BCC_OK:
+                                if (byte == FLAG) state = STOP;
+                                else state = START;
+                                break;
+                            default: 
+                                break;
+                        }
+                    }
+                } 
+                connectionParameters.nRetransmissions--;
             }
+            if (state != STOP) return -1;
+            break;  
         }
 
-        printf("Rx: SET received. Sending UA...\n");
-        unsigned char ua[] = {FLAG, A_RX, C_UA, A_RX ^ C_UA, FLAG};
-        writeBytesSerialPort(ua, 5);
+        // --- RECEIVER ---
+        case(LlRx): {
+            while (state != STOP)
+            {
+                int res = readByteSerialPort(&byte);
+                if (res <= 0) continue;
+                switch (state)
+                {
+                    case START:
+                        if (byte == FLAG) state = FLAG_RCV;
+                        break;
+                    case FLAG_RCV:
+                        if (byte == A_TX) state = A_RCV;
+                        else if (byte != FLAG) state = START;
+                        break;
+                    case A_RCV:
+                        if (byte == C_SET) state = C_RCV;
+                        else if (byte == FLAG) state = FLAG_RCV;
+                        else state = START;
+                        break;
+                    case C_RCV:
+                        if (byte == (A_TX ^ C_SET)) state = BCC_OK;
+                        else if (byte == FLAG) state = FLAG_RCV;
+                        else state = START;
+                        break;
+                    case BCC_OK:
+                        if (byte == FLAG) state = STOP;
+                        else state = START;
+                        break;
+                    case STOP:
+                        break;
+                }
+            }
+            unsigned char ua[] = {FLAG, A_RX, C_UA, A_RX ^ C_UA, FLAG};
+            writeBytesSerialPort(ua, 5);
+            break;
+        }
+        default:
+            return -1;
+            break;
     }
-
-    else
-    {
-        printf("Error: invalid role.\n");
-        return -1;
-    }
-
     return 0;
 }
+
 
 ////////////////////////////////////////////////
 // LLWRITE
