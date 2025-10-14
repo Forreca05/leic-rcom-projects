@@ -35,6 +35,66 @@ void alarmHandler(int signal)
     alarmCount++;
 }
 
+int normalizeBytes (unsigned char* packet, int frameIDX, unsigned char* frame) {
+    int previousByte = 0;
+    int packetIDX = 0;
+    for (int i = 0; i<frameIDX; i++) {
+        if (frame[i] == ESC) {
+            previousByte = frame[i];
+            continue;
+        }
+        else if (previousByte == ESC) {
+            packet[packetIDX++] = frame[i] ^ 0x20;
+            previousByte = 0;
+        }
+        else {
+            packet[packetIDX++] = frame[i];
+            previousByte = 0;
+        }
+    }
+    return packetIDX;
+}
+
+unsigned char readcontrolframe() {
+    unsigned char byte, cField;
+    State state = START;
+
+    while(state != STOP && alarmTriggered == FALSE) {
+        int res = readByteSerialPort(&byte);
+            if (res > 0) {
+                switch (state) {
+                    case START:
+                        if (byte == FLAG) state = FLAG_RCV;
+                        break;
+                    case FLAG_RCV:
+                        if (byte == A_TX) state = A_RCV;
+                        else if (byte != FLAG) state = START;
+                        break;
+                    case A_RCV:
+                        if (byte == C_RR(0) || byte == C_RR(1) || byte == C_REJ(0) || byte == C_REJ(1)) {
+                            state = C_RCV;
+                            cField = byte;
+                        } 
+                        else if (byte == FLAG) state = FLAG_RCV;
+                        else state = START;
+                        break;
+                    case C_RCV:
+                        if (byte == (A_TX ^ cField)) state = BCC_OK;
+                        else if (byte == FLAG) state = FLAG_RCV;
+                        else state = START;
+                        break;
+                    case BCC_OK:
+                        if (byte == FLAG) state = STOP;
+                        else state = START;
+                        break;
+                    default: 
+                        break;
+                }
+            }
+        
+    }
+    return cField;
+}
 
 int llopen(LinkLayer connectionParameters)
 {
@@ -74,7 +134,7 @@ int llopen(LinkLayer connectionParameters)
                                 else state = START;
                                 break;
                             case C_RCV:
-                                if (byte == (A_TX ^ C_UA)) state = BCC_OK;
+                                if (byte == (A_TX ^ C_SET)) state = BCC_OK;
                                 else if (byte == FLAG) state = FLAG_RCV;
                                 else state = START;
                                 break;
@@ -114,7 +174,7 @@ int llopen(LinkLayer connectionParameters)
                         else state = START;
                         break;
                     case C_RCV:
-                        if (byte == (A_TX ^ C_SET)) state = BCC_OK;
+                        if (byte == (A_TX ^ C_UA)) state = BCC_OK;
                         else if (byte == FLAG) state = FLAG_RCV;
                         else state = START;
                         break;
@@ -173,13 +233,32 @@ int llwrite(const unsigned char *buf, int bufSize)
     while(currenttransmission < retransmitions) {
         alarmTriggered = FALSE;
         alarm(timeout);
+        accepted = 0; rejected = 0;
 
-        writeBytesSerialPort(frame, j);
+        while(!alarmTriggered && !accepted && !rejected) {
+            writeBytesSerialPort(frame, j);
+            unsigned char result = readcontrolframe();
 
-        while(!alarmTriggered && )
+            if(!result) continue;
+            else if (result == C_REJ(0) || result == C_REJ(1)) {
+                rejected = 1;
+            }
+            else if (result == C_RR(0) || result == C_RR(1)) {
+                accepted = 1;
+                tramaTx = (tramaTx + 1) % 2;
+            }
+            else continue;
+        }
+        if (accepted) break;
+        currenttransmission++;
     }
 
-    return 0;
+    free(frame);
+    if (accepted) return frameSize;
+    else {
+        llclose();
+        return -1;
+    } 
 }
 
 ////////////////////////////////////////////////
@@ -230,7 +309,7 @@ int llread(unsigned char *packet)
                 case BCC_OK:
                     if (byte == FLAG) {
                         if (frameIDX > 0) {
-                            int dataSize = normalizeBytes(packet, frameIDX, frame); // falta implementar
+                            int dataSize = normalizeBytes(packet, frameIDX, frame); 
                             BCC2Field = packet[dataSize - 1];
                             unsigned char BCC2 = 0;                                           
                             for (int i = 0; i < dataSize - 1; i++) BCC2 ^= packet[i];       // Calculate BCC2 manually to check for errors in the transmission
@@ -266,3 +345,4 @@ int llclose()
 
     return 0;
 }
+
