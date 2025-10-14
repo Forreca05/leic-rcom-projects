@@ -12,7 +12,6 @@
 #define A_RX 0x01
 #define C_SET 0x03
 #define C_UA 0x07
-#define C_N(x) ((x >> 4) & 0x0F)
 
 typedef enum {
     START,
@@ -35,6 +34,7 @@ void alarmHandler(int signal)
     alarmTriggered = TRUE;
     alarmCount++;
 }
+
 
 int llopen(LinkLayer connectionParameters)
 {
@@ -143,7 +143,7 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
 {
-    int frameSize = bufSize;
+    int frameSize = 6 + bufSize;  // FLAG + A + C + BCC1 + dados + BCC2 + FLAG
     unsigned char *frame = (unsigned char *) malloc(frameSize);
     frame[0] = FLAG;
     frame[1] = A_TX;
@@ -153,7 +153,7 @@ int llwrite(const unsigned char *buf, int bufSize)
     memcpy(frame + 4, buf, bufSize);
     unsigned char BCC_2 = buf[0];
 
-    for (int i = 1; i < bufSize; i++) BCC_2 ^ buf[i];
+    for (int i = 1; i < bufSize; i++) BCC_2 ^= buf[i];
      
     int j = 4;
     for (int i = 0; i <  bufSize; i++) {
@@ -167,6 +167,17 @@ int llwrite(const unsigned char *buf, int bufSize)
     frame[j++] = BCC_2;
     frame[j++] = FLAG;
 
+    int currenttransmission = 0;
+    int accepted = 0; int rejected = 0;
+
+    while(currenttransmission < retransmitions) {
+        alarmTriggered = FALSE;
+        alarm(timeout);
+
+        writeBytesSerialPort(frame, j);
+
+        while(!alarmTriggered && )
+    }
 
     return 0;
 }
@@ -177,31 +188,72 @@ int llwrite(const unsigned char *buf, int bufSize)
 int llread(unsigned char *packet)
 {
     unsigned char byte;
-    int infoField;
+    int frameIDX, BCC2Field;
     int i = 0;
+    unsigned char A, C, BCC1, BCC2;
     State state = START;
+    unsigned char frame[MAX_PAYLOAD_SIZE];
     while (state != STOP) {  
-        if (readByteSerialPort (&byte) {
+        if (readByteSerialPort (&byte)) {
             switch (state) {
+            
                 case START:
                     if (byte = FLAG) state = FLAG_RCV;
                     break;
+                    
                 case FLAG_RCV:
-                    if (byte = A_TX) state = A_RCV;
+                    if (byte = A_TX) {
+                        state = A_RCV;
+                        A = byte; 
+                    }
+                    else if (byte != FLAG) state = START;
                     break;
+                    
                 case A_RCV:
-                    if (byte = C_N(tramaTx)) state = C_RCV;
+                    if (byte == C_N(0) || byte == C_N(1)) {
+                        state = C_RCV;
+                        C = byte; 
+                    }
+                    else if (byte == FLAG) state = FLAG_RCV;
+                    else state = START;
                     break;
+                    
                 case C_RCV:
-                    if (C_N(tramaTx) ^ A_TX) state = BCC_OK;
-                    infoField = readByteSerialPort (&byte);
+                    if (byte = C^A) {
+                        state = BCC_OK;
+                        frameIDX = 0; 
+                    }
+                    else if (byte == FLAG) state = FLAG_RCV;
+                    else state = START;
                     break;
-                case C_RCV:
-                    if (byte = STOP) state = BCC_OK;
+                    
+                case BCC_OK:
+                    if (byte == FLAG) {
+                        if (frameIDX > 0) {
+                            int dataSize = normalizeBytes(packet, frameIDX, frame); // falta implementar
+                            BCC2Field = packet[dataSize - 1];
+                            unsigned char BCC2 = 0;                                           
+                            for (int i = 0; i < dataSize - 1; i++) BCC2 ^= packet[i];       // Calculate BCC2 manually to check for errors in the transmission
+                            if (BCC2 == BCC2Field) {     // Valid Frame
+                                sendResponse(RR); // falta implementar
+                                state = STOP;
+                                return dataSize - 1;
+                            } 
+                            else {       // Invalid Frame
+                                sendResponse(REJ); // falta implementar
+                                state = START;
+                            }
+                        }
+                    }
+                    else {
+                        frame[frameIDX++] = byte;
+                    }
                     break;
-
-    // TODO: Implement this function
-
+            }
+                    
+        }
+        return -1;
+    }
     return 0;
 }
 

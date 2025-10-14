@@ -4,6 +4,10 @@
 #ifndef _LINK_LAYER_H_
 #define _LINK_LAYER_H_
 
+#define C_RR(Nr) (0xAA | Nr)
+#define C_REJ(Nr) (0x54 | Nr)
+#define C_N(Ns) (Ns << 6)
+
 typedef enum
 {
     LlTx,
