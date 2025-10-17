@@ -55,6 +55,18 @@ int normalizeBytes (unsigned char* packet, int frameIDX, unsigned char* frame) {
     return packetIDX;
 }
 
+int sendSupervFrame (int response) {
+    unsigned char frame[5];
+
+    frame[0] = FLAG;
+    frame[1] = A_RX;
+    frame[2] = response;    //C
+    frame[3] = frame[1] ^ frame[2];  // BCC1
+    frame[4] = FLAG;
+
+    writeBytesSerialPort(frame, 5);
+}
+
 unsigned char readcontrolframe() {
     unsigned char byte, cField;
     State state = START;
@@ -269,7 +281,7 @@ int llread(unsigned char *packet)
     unsigned char byte;
     int frameIDX, BCC2Field;
     int i = 0;
-    unsigned char A, C, BCC1, BCC2;
+    unsigned char C;
     State state = START;
     unsigned char frame[MAX_PAYLOAD_SIZE];
     while (state != STOP) {  
@@ -277,13 +289,12 @@ int llread(unsigned char *packet)
             switch (state) {
             
                 case START:
-                    if (byte = FLAG) state = FLAG_RCV;
+                    if (byte == FLAG) state = FLAG_RCV;
                     break;
                     
                 case FLAG_RCV:
-                    if (byte = A_TX) {
+                    if (byte == A_TX) {
                         state = A_RCV;
-                        A = byte; 
                     }
                     else if (byte != FLAG) state = START;
                     break;
@@ -298,7 +309,7 @@ int llread(unsigned char *packet)
                     break;
                     
                 case C_RCV:
-                    if (byte = C^A) {
+                    if (byte == C^A_TX) {
                         state = BCC_OK;
                         frameIDX = 0; 
                     }
@@ -309,17 +320,23 @@ int llread(unsigned char *packet)
                 case BCC_OK:
                     if (byte == FLAG) {
                         if (frameIDX > 0) {
+
                             int dataSize = normalizeBytes(packet, frameIDX, frame); 
                             BCC2Field = packet[dataSize - 1];
-                            unsigned char BCC2 = 0;                                           
+                            int SequenceNr = (C >> 7) & 0x01;
+                            unsigned char BCC2 = 0;          
+
                             for (int i = 0; i < dataSize - 1; i++) BCC2 ^= packet[i];       // Calculate BCC2 manually to check for errors in the transmission
+
                             if (BCC2 == BCC2Field) {     // Valid Frame
-                                sendResponse(RR); // falta implementar
+                                int NextSeqNr = (SequenceNr + 1) % 2;
+                                sendSupervFrame(C_RR(NextSeqNr)); 
                                 state = STOP;
                                 return dataSize - 1;
                             } 
+
                             else {       // Invalid Frame
-                                sendResponse(REJ); // falta implementar
+                                sendSupervFrame(C_REJ (SequenceNr)); 
                                 state = START;
                             }
                         }
@@ -331,9 +348,8 @@ int llread(unsigned char *packet)
             }
                     
         }
-        return -1;
     }
-    return 0;
+    return -1;
 }
 
 ////////////////////////////////////////////////
