@@ -1,6 +1,3 @@
-// Main file of the serial port project.
-// DO NOT CHANGE THIS FILE
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
