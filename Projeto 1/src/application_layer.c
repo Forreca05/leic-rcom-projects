@@ -15,7 +15,7 @@ unsigned char *createControlPacket (long int fileSize, char* fileName, int contr
     packet[index++] = TYPE_FILESIZE; //T1
     packet[index++] = fileSizeLength; //L1
     for (int i = fileSizeLength - 1; i >= 0; i--) {  //V1
-        packet[index++] = (fileSizeLength >> (i * 8)) & 0xFF;
+        packet[index++] = (fileSize >> (i * 8)) & 0xFF;
     }
 
     packet[index++] = TYPE_FILENAME; //T2
@@ -44,6 +44,21 @@ unsigned char* createDataPacket(unsigned char* data, int payloadSize, int* cPack
 
     return dataPacket;
 }
+
+unsigned char* unpackControlPacket(unsigned char* controlPacket, int size, int* fileSize) {
+    unsigned char fileSizeLength = controlPacket[2]; 
+    unsigned char tempFileSize[fileSizeLength];
+    memcpy(tempFileSize, controlPacket + 3, fileSizeLength);
+    for (unsigned int i = 0; i<fileSizeLength; i++) {
+        *fileSize |= ((unsigned long int) tempFileSize[i]) << (8 * (fileSizeLength - 1 - i));
+    }
+
+    unsigned char fileNameLength = controlPacket[3+fileSizeLength+1]; 
+    unsigned char *fileName = (unsigned char*)malloc(fileNameLength);
+    memcpy(fileName, controlPacket+3+fileSizeLength+2, fileNameLength);
+
+    return fileName;
+} 
 
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
@@ -111,6 +126,16 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             printf("[APP] Error in end packet\n");
             exit(-1);
         }   
+    }
+
+    if (connectionParameters.role == LlRx) {
+        unsigned char *packet = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
+        int packetSize = -1;
+        while (packetSize = llread(packet)>0); //Tries to read until a packet is sucessfully read
+
+        unsigned long int fileSize = 0;
+        unsigned char* fileName = unpackControlPacket(packet, packetSize, &fileSize); 
+
     }
 
 
