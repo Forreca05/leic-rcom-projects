@@ -31,6 +31,20 @@ unsigned char *getData(FILE *fd, unsigned int fileSize) {
     return data;
 }
 
+unsigned char* createDataPacket(unsigned char* data, int payloadSize, int* cPacketSize) {
+    *cPacketSize = 3 + payloadSize;
+    unsigned char* dataPacket = (unsigned char*)malloc(*cPacketSize);
+
+    int index = 0;
+    dataPacket[index++] = CTRL_DATA;                 //C
+    dataPacket[index++] = (payloadSize >> 8) & 0xFF; //L2 
+    dataPacket[index++] = payloadSize & 0xFF;        //L1 
+
+    memcpy(&dataPacket[index], data, payloadSize);
+
+    return dataPacket;
+}
+
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
@@ -63,26 +77,42 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         rewind(file);
 
         unsigned int cPacketSize;
-        unsigned char *startPacket = createControlPacket (filesize, filename, CTRL_START, &cPacketSize);
+        unsigned char *startPacket = createControlPacket(filesize, filename, CTRL_START, &cPacketSize);
 
         if(llwrite(startPacket, cPacketSize) == -1){ 
             printf("[APP] Error in start packet\n");
             exit(-1);
         }   
 
-        unsigned char* data = getData(file, filesize);
+        unsigned char* data = getData(file, filesize); //Get data from file
         int remainingBytes = filesize;
         int dataFieldOctets = 0;
         int dataL1 = 0, dataL2;
+        int dPacketSize;
 
-        while (remainingBytes != 0) {
-            if (remainingBytes > MAX_PAYLOAD_SIZE) {
-                int payloadSize = MAX_PAYLOAD_SIZE
-                unsigned char *dataPacket = createDataPacket ()
-                dataL1++;
-            }
+        while (remainingBytes != 0) { //Write data until no more bytes left
             int payloadSize = remainingBytes > MAX_PAYLOAD_SIZE ? MAX_PAYLOAD_SIZE : remainingBytes;
+            unsigned char* dataChunk = (unsigned char*) malloc(payloadSize);
+            memcpy(dataChunk, data, payloadSize);
+            unsigned char *dataPacket = createDataPacket(dataChunk, payloadSize, &dPacketSize);
+            
+            if(llwrite(dataPacket, dPacketSize) == -1) {
+                printf("[APP] Error writing data packets\n");
+                exit(-1);
+            }
+            
+            remainingBytes -= MAX_PAYLOAD_SIZE; 
+            dataChunk += payloadSize; 
         }
+
+        unsigned char *endPacket = createControlPacket(filesize, filename, CTRL_END, &cPacketSize);
+
+        if(llwrite(endPacket, cPacketSize) == -1){ 
+            printf("[APP] Error in end packet\n");
+            exit(-1);
+        }   
+    }
+
 
 
     
