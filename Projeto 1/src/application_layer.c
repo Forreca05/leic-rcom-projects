@@ -2,12 +2,20 @@
 #include "link_layer.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
-unsigned char *createControlPacket (long int fileSize, char* fileName, int controlfield, int* cPacketSize) {
+unsigned char *createControlPacket (long int fileSize, const char *fileName, int controlfield, int* cPacketSize) {
     int nameLength = strlen(fileName);
-    int fileSizeLength = (int) ceil(log2f((float)fileSize)/8.0);
+
+    int fileSizeLength = 0;
+    long int tmpFileSize = fileSize;
+    while (tmpFileSize > 0) {
+        fileSizeLength++;
+        tmpFileSize >>= 8;
+    } 
+
     *cPacketSize = 1+1+fileSizeLength+1+nameLength;
-    unsigned char packet[*cPacketSize];
+    unsigned char* packet = (unsigned char*) malloc(*cPacketSize);
     int index = 0;
 
     packet[index++] = controlfield;
@@ -60,6 +68,18 @@ unsigned char* unpackControlPacket(unsigned char* controlPacket, int size, int* 
     return fileName;
 } 
 
+int unpackDataPacket(unsigned char* dataPacket, int packetSize, unsigned char* data) {
+    int L2 = dataPacket[1];
+    int L1 = dataPacket[2];
+    int payloadSize = L2*256 + L1;
+    memcpy(data, dataPacket + 3, payloadSize);
+
+    for (int i = 0; i < payloadSize; i++) {
+        data[i] = dataPacket[3 + i];
+    }
+    return 0;
+}
+
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
@@ -91,7 +111,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         long int filesize = ftell(file);
         rewind(file);
 
-        unsigned int cPacketSize;
+        int cPacketSize;
         unsigned char *startPacket = createControlPacket(filesize, filename, CTRL_START, &cPacketSize);
 
         if(llwrite(startPacket, cPacketSize) == -1){ 
@@ -101,8 +121,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
         unsigned char* data = getData(file, filesize); //Get data from file
         int remainingBytes = filesize;
-        int dataFieldOctets = 0;
-        int dataL1 = 0, dataL2;
         int dPacketSize;
 
         while (remainingBytes != 0) { //Write data until no more bytes left
@@ -117,7 +135,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             }
             
             remainingBytes -= MAX_PAYLOAD_SIZE; 
-            dataChunk += payloadSize; 
+            data += payloadSize; 
         }
 
         unsigned char *endPacket = createControlPacket(filesize, filename, CTRL_END, &cPacketSize);
@@ -129,18 +147,30 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     }
 
     if (connectionParameters.role == LlRx) {
-        unsigned char *packet = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
+        unsigned char *startPacket = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
         int packetSize = -1;
-        while (packetSize = llread(packet)>0); //Tries to read until a packet is sucessfully read
+        while ((packetSize = llread(startPacket))>0); //Tries to read until a packet is sucessfully read
 
-        unsigned long int fileSize = 0;
-        unsigned char* fileName = unpackControlPacket(packet, packetSize, &fileSize); 
+        int fileSize = 0;
+        unsigned char* fileName = unpackControlPacket(startPacket, packetSize, &fileSize); 
 
+        FILE *newFile = fopen((char *)fileName, "w");
+        unsigned char *packet = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
+        while ((packetSize = llread(packet))>0) {
+            unsigned char C = packet[0];
+            if (C == CTRL_DATA) {
+                unsigned char *data = (unsigned char *)malloc(packetSize-3);
+                unpackDataPacket (packet, packetSize, data);
+                fwrite(data, sizeof(char), packetSize-3, newFile);
+                free(data);
+            }
+            if (C == CTRL_END) {
+                printf("[APP] End Packet Received\n");
+                break;
+            }
+        }
+        fclose(newFile);
     }
-
-
-
-    
 
     printf("[APP] Link established successfully!\n");
 

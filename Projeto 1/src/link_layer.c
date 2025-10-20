@@ -1,4 +1,6 @@
 #include "link_layer.h"
+#include <stdlib.h>
+#include <string.h>
 
 
 int alarmTriggered = FALSE;
@@ -251,7 +253,6 @@ int llread(unsigned char *packet)
 {
     unsigned char byte;
     int frameIDX, BCC2Field;
-    int i = 0;
     unsigned char C;
     State state = START;
     unsigned char frame[MAX_PAYLOAD_SIZE];
@@ -284,7 +285,7 @@ int llread(unsigned char *packet)
                     break;
                     
                 case C_RCV:
-                    if (byte == C^A_TX) {
+                    if (byte == (C^A_TX)) {
                         state = BCC_OK;
                         frameIDX = 0; 
                     }
