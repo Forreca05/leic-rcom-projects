@@ -99,7 +99,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         return;
     }
 
-    printf("PUTO PUGS\n");
+    printf("[APP] llopen() successful!\n");
     if (connectionParameters.role == LlTx) {
         // --- TRANSMITTER ---
         FILE *file = fopen(filename, "rb");
@@ -120,6 +120,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             exit(-1);
         }   
 
+        printf("[APP] Start packet written sucessfully!\n");
+
         unsigned char* data = getData(file, filesize); //Get data from file
         int remainingBytes = filesize;
         int dPacketSize;
@@ -134,8 +136,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 printf("[APP] Error writing data packets\n");
                 exit(-1);
             }
-            
-            remainingBytes -= MAX_PAYLOAD_SIZE; 
+            remainingBytes -= payloadSize; 
             data += payloadSize; 
         }
 

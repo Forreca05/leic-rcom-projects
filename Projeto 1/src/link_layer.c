@@ -8,7 +8,7 @@ int alarmCount = 0;
 int timeout = 0;
 int retransmitions = 0;
 unsigned char tramaTx = 0;
-unsigned char tramaRx = 1;
+unsigned char tramaRx = 0;
 
 void alarmHandler(int signal)
 {
@@ -42,7 +42,7 @@ int sendSupervFrame (unsigned char A, unsigned char C) {
 }
 
 unsigned char readcontrolframe() {
-    unsigned char byte, cField;
+    unsigned char byte, cField = 0;
     State state = START;
 
     while(state != STOP && alarmTriggered == FALSE) {
@@ -53,7 +53,7 @@ unsigned char readcontrolframe() {
                         if (byte == FLAG) state = FLAG_RCV;
                         break;
                     case FLAG_RCV:
-                        if (byte == A_TX) state = A_RCV;
+                        if (byte == A_RX) state = A_RCV;
                         else if (byte != FLAG) state = START;
                         break;
                     case A_RCV:
@@ -65,7 +65,7 @@ unsigned char readcontrolframe() {
                         else state = START;
                         break;
                     case C_RCV:
-                        if (byte == (A_TX ^ cField)) state = BCC_OK;
+                        if (byte == (A_RX ^ cField)) state = BCC_OK;
                         else if (byte == FLAG) state = FLAG_RCV;
                         else state = START;
                         break;
@@ -222,11 +222,20 @@ int llwrite(const unsigned char *buf, int bufSize)
         if(buf[i] == FLAG || buf[i] == ESC) {
             frame = realloc(frame, ++frameSize);
             frame[j++] = ESC;
+            frame[j++] = buf[i] ^ 0x20; // Write the XORed byte
+        } else {
+            frame[j++] = buf[i]; // Write the normal byte
         }
-        frame[j++] = buf[i];
     }
 
-    frame[j++] = BCC_2;
+    if(BCC_2 == FLAG || BCC_2 == ESC) {
+        frame = realloc(frame, ++frameSize);
+        frame[j++] = ESC;
+        frame[j++] = BCC_2 ^ 0x20;
+    } else {
+        frame[j++] = BCC_2;
+    }
+
     frame[j++] = FLAG;
 
     int currenttransmission = 0;
@@ -234,18 +243,18 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     while(currenttransmission < retransmitions) {
         alarmTriggered = FALSE;
+        writeBytesSerialPort(frame, j);
         alarm(timeout);
         accepted = 0; rejected = 0;
 
         while(!alarmTriggered && !accepted && !rejected) {
-            writeBytesSerialPort(frame, j);
             unsigned char result = readcontrolframe();
 
             if(!result) continue;
-            else if (result == C_REJ(0) || result == C_REJ(1)) {
+            else if (result == C_REJ(tramaTx)) {
                 rejected = 1;
             }
-            else if (result == C_RR(0) || result == C_RR(1)) {
+            else if ((result == C_RR((tramaTx + 1) % 2))) {
                 accepted = 1;
                 tramaTx = (tramaTx + 1) % 2;
             }
@@ -320,21 +329,31 @@ int llread(unsigned char *packet)
 
                             for (int i = 1; i < dataSize - 1; i++) BCC2 ^= packet[i];       // Calculate BCC2 manually to check for errors in the transmission
 
-                            if (BCC2 == BCC2Field) {     // Valid Frame
-                                sendSupervFrame(A_RX, C_RR(tramaRx)); 
-                                tramaRx = (tramaRx + 1) % 2;
-                                state = STOP;
-                                return dataSize - 1;
+                            if (BCC2 == BCC2Field) {     // Valid frame
+                                if (C == C_N(tramaRx)) {  // Correct frame received
+                                    tramaRx = (tramaRx + 1) % 2; 
+                                    sendSupervFrame(A_RX, C_RR(tramaRx)); 
+                                    state = STOP;
+                                    return dataSize - 1; 
+                                } 
+                                else { // Duplicate frame
+                                    sendSupervFrame(A_RX, C_RR(tramaRx));
+                                    state = START; 
+                                }
                             } 
-
-                            else {       // Invalid Frame
+                            else {       // Invalid frame
                                 sendSupervFrame(A_RX, C_REJ (tramaRx)); 
                                 state = START;
                             }
                         }
                     }
                     else {
-                        frame[frameIDX++] = byte;
+                        if (frameIDX < MAX_PAYLOAD_SIZE) { // Overflow
+                            frame[frameIDX++] = byte;
+                        } else {
+                            frameIDX = 0;
+                            state = START;
+                        }
                     }
                     break;
             }
