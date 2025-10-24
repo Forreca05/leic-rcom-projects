@@ -44,7 +44,6 @@ int sendSupervFrame (unsigned char A, unsigned char C) {
 unsigned char readcontrolframe() {
     unsigned char byte, cField = 0;
     State state = START;
-
     while(state != STOP && alarmTriggered == FALSE) {
         int res = readByteSerialPort(&byte);
             if (res > 0) {
@@ -79,6 +78,7 @@ unsigned char readcontrolframe() {
             }
         
     }
+    alarm(0);
     return cField;
 }
 
@@ -212,7 +212,6 @@ int llwrite(const unsigned char *buf, int bufSize)
     frame[2] = C_N(tramaTx);
     frame[3] = frame[1] ^ frame[2];
 
-    memcpy(frame + 4, buf, bufSize);
     unsigned char BCC_2 = buf[0];
 
     for (int i = 1; i < bufSize; i++) BCC_2 ^= buf[i];
@@ -238,6 +237,14 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     frame[j++] = FLAG;
 
+    printf("[LLWRITE] Frame prepared, size=%d\n", j);
+
+    printf("[LLWRITE] Frame first 50 bytes: ");
+    for (int k = 0; k < (j < 50 ? j : 50); k++) {
+        printf("%02X ", frame[k]);
+    }
+    printf("\n");
+
     int currenttransmission = 0;
     int accepted = 0; int rejected = 0;
 
@@ -249,16 +256,25 @@ int llwrite(const unsigned char *buf, int bufSize)
 
         while(!alarmTriggered && !accepted && !rejected) {
             unsigned char result = readcontrolframe();
+            printf("[LLWRITE] Got control frame result: 0x%02X\n", result);
 
-            if(!result) continue;
+            if(!result) {
+                printf("[LLWRITE] Null result (timeout or invalid)\n");
+                continue;
+            }
             else if (result == C_REJ(tramaTx)) {
+                printf("[LLWRITE] Got REJ\n");
                 rejected = 1;
             }
             else if ((result == C_RR((tramaTx + 1) % 2))) {
+                printf("[LLWRITE] Got RR - accepted!\n");
                 accepted = 1;
                 tramaTx = (tramaTx + 1) % 2;
             }
-            else continue;
+            else {
+                continue;
+                printf("[LLWRITE] Unexpected control byte\n");
+            }
         }
         if (accepted) break;
         currenttransmission++;
@@ -267,6 +283,7 @@ int llwrite(const unsigned char *buf, int bufSize)
     free(frame);
     if (accepted) return frameSize;
     else {
+        printf("NOT ACCPTED");
         llclose();
         return -1;
     } 
@@ -277,10 +294,22 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
+    printf("[LLREAD] Called, waiting for frame...\n");
     unsigned char byte;
-    int frameIDX, BCC2Field;
+    int BCC2Field;
+    int frameIDX = 0;
     unsigned char C;
     State state = START;
+
+    if (readByteSerialPort(&byte)) {
+        static int byteCount = 0;
+        if (byteCount < 50) {
+            printf("%02X ", byte);
+            if (byteCount == 49) printf("\n");
+        }
+        byteCount++;
+    }
+
     unsigned char frame[MAX_PAYLOAD_SIZE];
     while (state != STOP) {  
         if (readByteSerialPort (&byte)) {
@@ -323,25 +352,32 @@ int llread(unsigned char *packet)
                     if (byte == FLAG) {
                         if (frameIDX > 0) {
 
-                            int dataSize = normalizeBytes(packet, frameIDX, frame); 
+                            printf("[LLREAD] Got FLAG, processing frame, frameIDX=%d\n", frameIDX);
+                            int dataSize = normalizeBytes(packet, frameIDX, frame);
+                            printf("[LLREAD] After destuffing, dataSize=%d\n", dataSize); 
                             BCC2Field = packet[dataSize - 1];
                             unsigned char BCC2 = packet[0];          
 
                             for (int i = 1; i < dataSize - 1; i++) BCC2 ^= packet[i];       // Calculate BCC2 manually to check for errors in the transmission
+                            printf("[LLREAD] BCC2 calculated=0x%02X, BCC2Field=0x%02X\n", BCC2, BCC2Field);
 
                             if (BCC2 == BCC2Field) {     // Valid frame
+                                printf("[LLREAD] BCC2 OK!\n");
                                 if (C == C_N(tramaRx)) {  // Correct frame received
+                                    printf("[LLREAD] Correct frame %d, sending RR(%d)\n", tramaRx, (tramaRx+1)%2);
                                     tramaRx = (tramaRx + 1) % 2; 
                                     sendSupervFrame(A_RX, C_RR(tramaRx)); 
                                     state = STOP;
                                     return dataSize - 1; 
                                 } 
                                 else { // Duplicate frame
+                                    printf("[LLREAD] Duplicate frame, sending RR(%d)\n", tramaRx);
                                     sendSupervFrame(A_RX, C_RR(tramaRx));
                                     state = START; 
                                 }
                             } 
                             else {       // Invalid frame
+                                printf("[LLREAD] BCC2 ERROR! Sending REJ(%d)\n", tramaRx);
                                 sendSupervFrame(A_RX, C_REJ (tramaRx)); 
                                 state = START;
                             }

@@ -14,7 +14,7 @@ unsigned char *createControlPacket (long int fileSize, const char *fileName, int
         tmpFileSize >>= 8;
     } 
 
-    *cPacketSize = 1+1+fileSizeLength+1+nameLength;
+    *cPacketSize = 1+1+1+fileSizeLength+1+1+nameLength;
     unsigned char* packet = (unsigned char*) malloc(*cPacketSize);
     int index = 0;
 
@@ -63,6 +63,7 @@ unsigned char* unpackControlPacket(unsigned char* controlPacket, int size, int* 
 
     unsigned char fileNameLength = controlPacket[3+fileSizeLength+1]; 
     unsigned char *fileName = (unsigned char*)malloc(fileNameLength);
+    fileName[fileNameLength] = '\0';
     memcpy(fileName, controlPacket+3+fileSizeLength+2, fileNameLength);
 
     return fileName;
@@ -108,9 +109,12 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             return;
         }
 
-        fseek(file, 0, SEEK_END);
-        long int filesize = ftell(file);
+        long int filesize = 0;
+        while (fgetc(file) != EOF) {
+            filesize++;
+        }
         rewind(file);
+        printf("[SIZE] size=%ld bytes\n", filesize);
 
         int cPacketSize;
         unsigned char *startPacket = createControlPacket(filesize, filename, CTRL_START, &cPacketSize);
@@ -150,15 +154,19 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     if (connectionParameters.role == LlRx) {
         unsigned char *startPacket = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
-        int packetSize = -1;
-        while ((packetSize = llread(startPacket))>0); //Tries to read until a packet is sucessfully read
+        int packetSize = llread(startPacket); 
+        printf("[APP-RX] Start packet read, size=%d\n", packetSize);
 
         int fileSize = 0;
         unsigned char* fileName = unpackControlPacket(startPacket, packetSize, &fileSize); 
+        printf("[APP-RX] File: %s, Size: %d\n", fileName, fileSize);
 
-        FILE *newFile = fopen((char *)fileName, "w");
+        FILE *newFile = fopen("penguin-received.gif", "w");
         unsigned char *packet = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
+
+        printf("[APP-RX] Waiting for data packets...\n");
         while ((packetSize = llread(packet))>0) {
+            printf("[APP-RX] Packet received, size=%d, type=0x%02X\n", packetSize, packet[0]);
             unsigned char C = packet[0];
             if (C == CTRL_DATA) {
                 unsigned char *data = (unsigned char *)malloc(packetSize-3);
