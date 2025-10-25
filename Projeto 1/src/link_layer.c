@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 int alarmTriggered = FALSE;
 int alarmCount = 0;
 int timeout = 0;
@@ -93,7 +92,6 @@ int llopen(LinkLayer connectionParameters)
     retransmitions = connectionParameters.nRetransmissions;
     
     switch(connectionParameters.role) {
-         // --- TRANSMITTER ---
         case(LlTx): {
             if (signal(SIGALRM, alarmHandler) == SIG_ERR) {
                 perror("signal");
@@ -110,20 +108,17 @@ int llopen(LinkLayer connectionParameters)
                         switch (state) {
                             case START:
                                 if (byte == FLAG) {
-                                    printf("FLAG");
                                     state = FLAG_RCV;
                                 }
                                 break;
                             case FLAG_RCV:
                                 if (byte == A_RX) {
-                                    printf("A_TX");
                                     state = A_RCV;
                                 }
                                 else if (byte != FLAG) state = START;
                                 break;
                             case A_RCV:
                                 if (byte == C_UA) {
-                                    printf("C_SET");
                                     state = C_RCV;
                                 }
                                 else if (byte == FLAG) state = FLAG_RCV;
@@ -138,7 +133,6 @@ int llopen(LinkLayer connectionParameters)
                                 break;
                             case BCC_OK:
                                 if (byte == FLAG) {
-                                    printf("BCC");
                                     state = STOP;
                                 }
                                 else state = START;
@@ -154,7 +148,6 @@ int llopen(LinkLayer connectionParameters)
             break;  
         }
 
-        // --- RECEIVER ---
         case(LlRx): {
             while (state != STOP)
             {
@@ -176,7 +169,6 @@ int llopen(LinkLayer connectionParameters)
                         break;
                     case C_RCV:
                         if (byte == (A_TX ^ C_SET)) {
-                            printf("XOR");
                             state = BCC_OK;
                         }
                         else if (byte == FLAG) state = FLAG_RCV;
@@ -206,7 +198,6 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
 {
-    printf("e isto  %d", bufSize);
     int frameSize = 6 + bufSize;  // FLAG + A + C + BCC1 + dados + BCC2 + FLAG
     unsigned char *frame = (unsigned char *) malloc(frameSize);
     frame[0] = FLAG;
@@ -238,24 +229,6 @@ int llwrite(const unsigned char *buf, int bufSize)
     }
 
     frame[j++] = FLAG;
-    printf("[LLWRITE] Trama completa (%d bytes):\n", j);
-    for (int i = 0; i < j; i++) {
-        if (frame[i] == ESC) printf("[ESC] ");
-        else if (frame[i] == FLAG) printf("[FLAG] ");
-        else printf("%02X ", frame[i]);
-
-        if ((i + 1) % 16 == 0) printf("\n");
-    }
-    printf("\n");
-
-
-    printf("[LLWRITE] Frame prepared, size=%d\n", j);
-
-    printf("[LLWRITE] Frame first 50 bytes: ");
-    for (int k = 0; k < (j < 50 ? j : 50); k++) {
-        printf("%02X ", frame[k]);
-    }
-    printf("\n");
 
     int currenttransmission = 0;
     int accepted = 0; int rejected = 0;
@@ -266,26 +239,21 @@ int llwrite(const unsigned char *buf, int bufSize)
         accepted = 0; rejected = 0;
 
         while(!alarmTriggered && !accepted && !rejected) {
-            int num = writeBytesSerialPort(frame, j);
+            writeBytesSerialPort(frame, j);
             unsigned char result = readcontrolframe();
-            printf("[LLWRITE] Got control frame result: 0x%02X\n", result);
 
             if(!result) {
-                printf("[LLWRITE] Null result (timeout or invalid)\n");
                 continue;
             }
             else if (result == C_REJ(tramaTx)) {
-                printf("[LLWRITE] Got REJ\n");
                 rejected = 1;
             }
             else if ((result == C_RR((tramaTx + 1) % 2))) {
-                printf("[LLWRITE] Got RR - accepted!\n");
                 accepted = 1;
                 tramaTx = (tramaTx + 1) % 2;
             }
             else {
                 continue;
-                printf("[LLWRITE] Unexpected control byte\n");
             }
         }
         if (accepted) break;
@@ -295,7 +263,6 @@ int llwrite(const unsigned char *buf, int bufSize)
     free(frame);
     if (accepted) return frameSize;
     else {
-        printf("NOT ACCPTED");
         llclose();
         return -1;
     } 
@@ -306,15 +273,10 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
-    printf("[LLREAD] Iniciado, à espera de trama...\n");
-
     unsigned char byte;
-    int frameIDX = 0, i = 0;
-    int enabled = FALSE;
+    int i = 0;
     unsigned char C = 0;
     State state = START;
-    unsigned char frame[MAX_PAYLOAD_SIZE];
-    unsigned char BCC2Field = 0;
 
     while (state != STOP) {
         if (readByteSerialPort(&byte)) {
@@ -343,8 +305,6 @@ int llread(unsigned char *packet)
                 case C_RCV:
                     if (byte == (C ^ A_TX)) {
                         state = BCC_OK;
-                        frameIDX = 0;
-                        BCC2Field = 0; // reset BCC2
                     } else if (byte == FLAG) state = FLAG_RCV;
                     else state = START;
                     break;
@@ -357,24 +317,8 @@ int llread(unsigned char *packet)
                         packet[i] = '\0';
                         unsigned char acc = packet[0];
 
-                        printf("\n=== DEBUG: RECEÇÃO DE FRAME ===\n");
-                        printf("Número total de bytes recebidos (sem FLAG): %d\n", i + 1);
-                        printf("BCC2 (último byte): 0x%02X\n", bcc2);
-
-                        printf("Dados no packet antes do cálculo do BCC2:\n");
-                        for (int k = 0; k < i; k++) {
-                            printf("%02X ", packet[k]);
-                        }
-                        printf("\n");
-
-                        // Cálculo do BCC2 acumulado
                         for (unsigned int j = 1; j < i; j++)
                             acc ^= packet[j];
-
-                        printf("BCC2 calculado (acc): 0x%02X\n", acc);
-                        printf("==============================\n");
-
-                        enabled = FALSE;
 
                         if (bcc2 == acc){
                             state = STOP;
@@ -397,11 +341,10 @@ int llread(unsigned char *packet)
                     state = BCC_OK;
                     byte ^= 0x20;
                     if (byte == ESC || byte == FLAG) {
-                        packet[i++] = byte;
-                        enabled = TRUE;}
+                        packet[i++] = byte;}
                     else{
                         packet[i++] = ESC;
-                        packet[i++] = byte;
+                        packet[i++] = byte ^= 0x20;
                     }
                     break;
                 default: 

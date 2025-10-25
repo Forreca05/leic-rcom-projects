@@ -91,9 +91,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     connectionParameters.timeout = timeout;
     connectionParameters.nRetransmissions = nTries;
 
-    printf("\n[APP] Starting link layer (%s)...\n", role);
-
-    // 1️⃣ Estabelece ligação (SET/UA)
     int fd = llopen(connectionParameters);
     if (fd < 0) {
         printf("[APP] llopen() failed!\n");
@@ -102,7 +99,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     printf("[APP] llopen() successful!\n");
     if (connectionParameters.role == LlTx) {
-        // --- TRANSMITTER ---
         FILE *file = fopen(filename, "rb");
         if (!file) {
             perror("[APP] Error opening file");
@@ -114,7 +110,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             filesize++;
         }
         rewind(file);
-        printf("[SIZE] size=%ld bytes\n", filesize);
 
         int cPacketSize;
         unsigned char *startPacket = createControlPacket(filesize, filename, CTRL_START, &cPacketSize);
@@ -124,12 +119,11 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             exit(-1);
         }   
 
-        printf("[APP] Start packet written sucessfully!\n");
-
         unsigned char* data = getData(file, filesize); //Get data from file
         int remainingBytes = filesize;
         int dPacketSize;
 
+        printf("[APP-TX] Extracting %ld bytes from %s.\n", filesize, filename);
         while (remainingBytes != 0) { //Write data until no more bytes left
             int payloadSize = remainingBytes > MAX_PAYLOAD_SIZE ? MAX_PAYLOAD_SIZE : remainingBytes;
             unsigned char* dataChunk = (unsigned char*) malloc(payloadSize);
@@ -155,43 +149,35 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     if (connectionParameters.role == LlRx) {
         unsigned char *startPacket = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
         int packetSize = llread(startPacket); 
-        printf("[APP-RX] Start packet read, size=%d\n", packetSize);
 
         int fileSize = 0;
         unsigned char* fileName = unpackControlPacket(startPacket, packetSize, &fileSize); 
-        printf("[APP-RX] File: %s, Size: %d\n", fileName, fileSize);
+        printf("[APP-RX] Start Packet Received. Extracting %d bytes from %s.\n", fileSize, fileName);
 
         FILE *newFile = fopen("penguin-received.gif", "w");
         unsigned char *packet = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
+        while (1) {
+            while ((packetSize = llread(packet)) < 0);
 
-        printf("[APP-RX] Waiting for data packets...\n");
-            while (1) {
-                while ((packetSize = llread(packet)) < 0);
+            unsigned char C = packet[0];
 
-                unsigned char C = packet[0];
-                printf("[APP-RX] Packet received, size=%d, type=0x%02X\n", packetSize, C);
+            if (C == CTRL_END) {
+                printf("[APP-RX] End Packet Received\n");
+                break;
+            }
 
-                if (C == CTRL_END) {
-                    printf("[APP-RX] End Packet Received\n");
-                    break;
-                }
-
-                if (C == CTRL_DATA) {
-                    unsigned char *data = (unsigned char *)malloc(packetSize - 3); // Assumindo cabeçalho de 4 bytes
-                    unpackDataPacket(packet, packetSize, data);
-                    fwrite(data, sizeof(unsigned char), packetSize - 3, newFile);
-                    free(data);
-                }
+            if (C == CTRL_DATA) {
+                unsigned char *data = (unsigned char *)malloc(packetSize - 3); // Assumindo cabeçalho de 4 bytes
+                unpackDataPacket(packet, packetSize, data);
+                fwrite(data, sizeof(unsigned char), packetSize - 3, newFile);
+                free(data);
+            }
         }
-        printf("Finished");
         fclose(newFile);
     }
 
     printf("[APP] Link established successfully!\n");
-
-    // 2️⃣ Fecha ligação (DISC/UA)
     printf("[APP] Closing link...\n");
     llclose();
-
     printf("[APP] Connection closed.\n");
 }
