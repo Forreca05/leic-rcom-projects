@@ -12,11 +12,11 @@
 
 // Size of maximum acceptable payload.
 // Maximum number of bytes that application layer should send to link layer.
-#define MAX_PAYLOAD_SIZE 1000
+#define MAX_PAYLOAD_SIZE 28
 
 #define _POSIX_SOURCE 1
 #define FLAG 0x7E
-#define ESC 0x7F
+#define ESC 0x7D
 #define A_TX 0x03
 #define A_RX 0x01
 #define C_SET 0x03
@@ -32,6 +32,7 @@ typedef enum {
     A_RCV,
     C_RCV,
     BCC_OK,
+    DATA_FOUND_ESC,
     STOP
 } State;
 

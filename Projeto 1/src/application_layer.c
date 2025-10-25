@@ -165,20 +165,25 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         unsigned char *packet = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
 
         printf("[APP-RX] Waiting for data packets...\n");
-        while ((packetSize = llread(packet))>0) {
-            printf("[APP-RX] Packet received, size=%d, type=0x%02X\n", packetSize, packet[0]);
-            unsigned char C = packet[0];
-            if (C == CTRL_DATA) {
-                unsigned char *data = (unsigned char *)malloc(packetSize-3);
-                unpackDataPacket (packet, packetSize, data);
-                fwrite(data, sizeof(char), packetSize-3, newFile);
-                free(data);
-            }
-            if (C == CTRL_END) {
-                printf("[APP] End Packet Received\n");
-                break;
-            }
+            while (1) {
+                while ((packetSize = llread(packet)) < 0);
+
+                unsigned char C = packet[0];
+                printf("[APP-RX] Packet received, size=%d, type=0x%02X\n", packetSize, C);
+
+                if (C == CTRL_END) {
+                    printf("[APP-RX] End Packet Received\n");
+                    break;
+                }
+
+                if (C == CTRL_DATA) {
+                    unsigned char *data = (unsigned char *)malloc(packetSize - 3); // Assumindo cabeçalho de 4 bytes
+                    unpackDataPacket(packet, packetSize, data);
+                    fwrite(data, sizeof(unsigned char), packetSize - 3, newFile);
+                    free(data);
+                }
         }
+        printf("Finished");
         fclose(newFile);
     }
 

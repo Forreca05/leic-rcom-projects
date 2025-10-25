@@ -36,47 +36,48 @@ int normalizeBytes (unsigned char* packet, int frameIDX, unsigned char* frame) {
     return packetIDX;
 }
 
-int sendSupervFrame (unsigned char A, unsigned char C) {
+int sendSupervFrame(unsigned char A, unsigned char C) {
     unsigned char frame[5] = {FLAG, A, C, A ^ C, FLAG};
-    return writeBytesSerialPort(frame, 5);
+    int res = writeBytesSerialPort(frame, 5);
+    return res;
 }
+
 
 unsigned char readcontrolframe() {
     unsigned char byte, cField = 0;
     State state = START;
     while(state != STOP && alarmTriggered == FALSE) {
         int res = readByteSerialPort(&byte);
-            if (res > 0) {
-                switch (state) {
-                    case START:
-                        if (byte == FLAG) state = FLAG_RCV;
-                        break;
-                    case FLAG_RCV:
-                        if (byte == A_RX) state = A_RCV;
-                        else if (byte != FLAG) state = START;
-                        break;
-                    case A_RCV:
-                        if (byte == C_RR(0) || byte == C_RR(1) || byte == C_REJ(0) || byte == C_REJ(1)) {
-                            state = C_RCV;
-                            cField = byte;
-                        } 
-                        else if (byte == FLAG) state = FLAG_RCV;
-                        else state = START;
-                        break;
-                    case C_RCV:
-                        if (byte == (A_RX ^ cField)) state = BCC_OK;
-                        else if (byte == FLAG) state = FLAG_RCV;
-                        else state = START;
-                        break;
-                    case BCC_OK:
-                        if (byte == FLAG) state = STOP;
-                        else state = START;
-                        break;
-                    default: 
-                        break;
-                }
+        if (res > 0) {
+            switch (state) {
+                case START:
+                    if (byte == FLAG) {state = FLAG_RCV;}
+                    break;
+                case FLAG_RCV:
+                    if (byte == A_RX) state = A_RCV;
+                    else if (byte != FLAG) state = START;
+                    break;
+                case A_RCV:
+                    if (byte == C_RR(0) || byte == C_RR(1) || byte == C_REJ(0) || byte == C_REJ(1)) {
+                        state = C_RCV;
+                        cField = byte;
+                    } 
+                    else if (byte == FLAG) state = FLAG_RCV;
+                    else state = START;
+                    break;
+                case C_RCV:
+                    if (byte == (A_RX ^ cField)) state = BCC_OK;
+                    else if (byte == FLAG) state = FLAG_RCV;
+                    else state = START;
+                    break;
+                case BCC_OK:
+                    if (byte == FLAG) state = STOP;
+                    else state = START;
+                    break;
+                default: 
+                    break;
             }
-        
+        }
     }
     alarm(0);
     return cField;
@@ -205,6 +206,7 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
 {
+    printf("e isto  %d", bufSize);
     int frameSize = 6 + bufSize;  // FLAG + A + C + BCC1 + dados + BCC2 + FLAG
     unsigned char *frame = (unsigned char *) malloc(frameSize);
     frame[0] = FLAG;
@@ -236,6 +238,16 @@ int llwrite(const unsigned char *buf, int bufSize)
     }
 
     frame[j++] = FLAG;
+    printf("[LLWRITE] Trama completa (%d bytes):\n", j);
+    for (int i = 0; i < j; i++) {
+        if (frame[i] == ESC) printf("[ESC] ");
+        else if (frame[i] == FLAG) printf("[FLAG] ");
+        else printf("%02X ", frame[i]);
+
+        if ((i + 1) % 16 == 0) printf("\n");
+    }
+    printf("\n");
+
 
     printf("[LLWRITE] Frame prepared, size=%d\n", j);
 
@@ -250,11 +262,11 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     while(currenttransmission < retransmitions) {
         alarmTriggered = FALSE;
-        writeBytesSerialPort(frame, j);
         alarm(timeout);
         accepted = 0; rejected = 0;
 
         while(!alarmTriggered && !accepted && !rejected) {
+            int num = writeBytesSerialPort(frame, j);
             unsigned char result = readcontrolframe();
             printf("[LLWRITE] Got control frame result: 0x%02X\n", result);
 
@@ -294,110 +306,113 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
-    printf("[LLREAD] Called, waiting for frame...\n");
+    printf("[LLREAD] Iniciado, à espera de trama...\n");
+
     unsigned char byte;
-    int BCC2Field;
-    int frameIDX = 0;
-    unsigned char C;
+    int frameIDX = 0, i = 0;
+    int enabled = FALSE;
+    unsigned char C = 0;
     State state = START;
-
-    if (readByteSerialPort(&byte)) {
-        static int byteCount = 0;
-        if (byteCount < 50) {
-            printf("%02X ", byte);
-            if (byteCount == 49) printf("\n");
-        }
-        byteCount++;
-    }
-
     unsigned char frame[MAX_PAYLOAD_SIZE];
-    while (state != STOP) {  
-        if (readByteSerialPort (&byte)) {
+    unsigned char BCC2Field = 0;
+
+    while (state != STOP) {
+        if (readByteSerialPort(&byte)) {
             switch (state) {
-            
                 case START:
                     if (byte == FLAG) state = FLAG_RCV;
                     break;
-                    
+
                 case FLAG_RCV:
-                    if (byte == A_TX) {
-                        state = A_RCV;
-                    }
+                    if (byte == A_TX) state = A_RCV;
                     else if (byte != FLAG) state = START;
                     break;
-                    
+
                 case A_RCV:
+                    // Identifica tipo de pacote
                     if (byte == C_N(0) || byte == C_N(1)) {
+                        C = byte;
                         state = C_RCV;
-                        C = byte; 
-                    }
-                    else if (byte == FLAG) state = FLAG_RCV;
-                    else if (byte == C_DISC) {
+                    } else if (byte == C_DISC) {
                         sendSupervFrame(A_RX, C_DISC);
-                        return 0;
-                    }
+                        return 0; // pacote de controle DISC
+                    } else if (byte == FLAG) state = FLAG_RCV;
                     else state = START;
                     break;
-                    
+
                 case C_RCV:
-                    if (byte == (C^A_TX)) {
+                    if (byte == (C ^ A_TX)) {
                         state = BCC_OK;
-                        frameIDX = 0; 
-                    }
-                    else if (byte == FLAG) state = FLAG_RCV;
+                        frameIDX = 0;
+                        BCC2Field = 0; // reset BCC2
+                    } else if (byte == FLAG) state = FLAG_RCV;
                     else state = START;
                     break;
-                    
+
                 case BCC_OK:
-                    if (byte == FLAG) {
-                        if (frameIDX > 0) {
+                    if (byte == ESC) state = DATA_FOUND_ESC;
+                    else if (byte == FLAG){
+                        unsigned char bcc2 = packet[i-1];
+                        i--;
+                        packet[i] = '\0';
+                        unsigned char acc = packet[0];
 
-                            printf("[LLREAD] Got FLAG, processing frame, frameIDX=%d\n", frameIDX);
-                            int dataSize = normalizeBytes(packet, frameIDX, frame);
-                            printf("[LLREAD] After destuffing, dataSize=%d\n", dataSize); 
-                            BCC2Field = packet[dataSize - 1];
-                            unsigned char BCC2 = packet[0];          
+                        printf("\n=== DEBUG: RECEÇÃO DE FRAME ===\n");
+                        printf("Número total de bytes recebidos (sem FLAG): %d\n", i + 1);
+                        printf("BCC2 (último byte): 0x%02X\n", bcc2);
 
-                            for (int i = 1; i < dataSize - 1; i++) BCC2 ^= packet[i];       // Calculate BCC2 manually to check for errors in the transmission
-                            printf("[LLREAD] BCC2 calculated=0x%02X, BCC2Field=0x%02X\n", BCC2, BCC2Field);
-
-                            if (BCC2 == BCC2Field) {     // Valid frame
-                                printf("[LLREAD] BCC2 OK!\n");
-                                if (C == C_N(tramaRx)) {  // Correct frame received
-                                    printf("[LLREAD] Correct frame %d, sending RR(%d)\n", tramaRx, (tramaRx+1)%2);
-                                    tramaRx = (tramaRx + 1) % 2; 
-                                    sendSupervFrame(A_RX, C_RR(tramaRx)); 
-                                    state = STOP;
-                                    return dataSize - 1; 
-                                } 
-                                else { // Duplicate frame
-                                    printf("[LLREAD] Duplicate frame, sending RR(%d)\n", tramaRx);
-                                    sendSupervFrame(A_RX, C_RR(tramaRx));
-                                    state = START; 
-                                }
-                            } 
-                            else {       // Invalid frame
-                                printf("[LLREAD] BCC2 ERROR! Sending REJ(%d)\n", tramaRx);
-                                sendSupervFrame(A_RX, C_REJ (tramaRx)); 
-                                state = START;
-                            }
+                        printf("Dados no packet antes do cálculo do BCC2:\n");
+                        for (int k = 0; k < i; k++) {
+                            printf("%02X ", packet[k]);
                         }
-                    }
-                    else {
-                        if (frameIDX < MAX_PAYLOAD_SIZE) { // Overflow
-                            frame[frameIDX++] = byte;
-                        } else {
-                            frameIDX = 0;
-                            state = START;
+                        printf("\n");
+
+                        // Cálculo do BCC2 acumulado
+                        for (unsigned int j = 1; j < i; j++)
+                            acc ^= packet[j];
+
+                        printf("BCC2 calculado (acc): 0x%02X\n", acc);
+                        printf("==============================\n");
+
+                        enabled = FALSE;
+
+                        if (bcc2 == acc){
+                            state = STOP;
+                            sendSupervFrame(A_RX, C_RR(tramaRx));
+                            tramaRx = (tramaRx + 1)%2;
+                            return i; 
                         }
+                        else{
+                            printf("Error: retransmition\n");
+                            sendSupervFrame(A_RX, C_REJ(tramaRx));
+                            return -1;
+                        };
+
                     }
+                    else{
+                        packet[i++] = byte;
+                    }
+                    break;
+                case DATA_FOUND_ESC:
+                    state = BCC_OK;
+                    byte ^= 0x20;
+                    if (byte == ESC || byte == FLAG) {
+                        packet[i++] = byte;
+                        enabled = TRUE;}
+                    else{
+                        packet[i++] = ESC;
+                        packet[i++] = byte;
+                    }
+                    break;
+                default: 
                     break;
             }
-                    
         }
     }
+    printf("[LLREAD] Falha na receção da trama\n");
     return -1;
 }
+
 
 ////////////////////////////////////////////////
 // LLCLOSE
