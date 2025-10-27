@@ -101,7 +101,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     if (connectionParameters.role == LlTx) {
         FILE *file = fopen(filename, "rb");
         if (!file) {
-            perror("[APP] Error opening file");
+            perror("[APP-TX] Error opening file");
             return;
         }
 
@@ -115,7 +115,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         unsigned char *startPacket = createControlPacket(filesize, filename, CTRL_START, &cPacketSize);
 
         if(llwrite(startPacket, cPacketSize) == -1){ 
-            printf("[APP] Error in start packet\n");
+            printf("[APP-TX] Error in start packet\n");
             exit(-1);
         }   
 
@@ -131,7 +131,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             unsigned char *dataPacket = createDataPacket(dataChunk, payloadSize, &dPacketSize);
             
             if(llwrite(dataPacket, dPacketSize) == -1) {
-                printf("[APP] Error writing data packets\n");
+                printf("[APP-TX] Error writing data packets\n");
                 exit(-1);
             }
             remainingBytes -= payloadSize; 
@@ -141,7 +141,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         unsigned char *endPacket = createControlPacket(filesize, filename, CTRL_END, &cPacketSize);
 
         if(llwrite(endPacket, cPacketSize) == -1){ 
-            printf("[APP] Error in end packet\n");
+            printf("[APP-TX] Error in end packet\n");
             exit(-1);
         }   
     }
