@@ -4,8 +4,8 @@
 
 #include "application_layer.h"
 
-#define N_TRIES 7
-#define TIMEOUT 10
+#define N_TRIES 3
+#define TIMEOUT 4
 
 // Arguments:
 //   $1: /dev/ttySxx
