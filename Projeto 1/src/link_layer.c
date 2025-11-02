@@ -174,13 +174,16 @@ int llopen(LinkLayer connectionParameters)
                 } 
 
                 if (alarmTriggered && state != STOP) {
-                    printf("[LINK-TX] Retransmission attempt number %d...\n", attempt);
+                    printf("[LINK-LLOPEN] Timeout! Retransmission attempt number %d...\n", attempt);
                     attempt++;
                 }
 
                 connectionParameters.nRetransmissions--;
             }
-            if (state != STOP) return -1;
+            if (state != STOP) {
+                printf("[LINK-TX] Failed to establish connection after %d attempts.\n", attempt - 1);
+                return -1;
+            }
             break;  
         }
 
@@ -282,12 +285,13 @@ int llwrite(const unsigned char *buf, int bufSize)
                 continue;
             }
             else if (result == C_REJ(tramaTx)) {
+                printf("[LINK-LLWRITE] REJ received, retransmitting...\n");
                 rejected = 1;
             }
             else if ((result == C_RR((tramaTx + 1) % 2))) {
                 accepted = 1;
                 tramaTx = (tramaTx + 1) % 2;
-            }
+            } 
             else {
                 continue;
             }
@@ -295,13 +299,14 @@ int llwrite(const unsigned char *buf, int bufSize)
         if (accepted) break;
         if (alarmTriggered) {
             currenttransmission++;
-            printf("[LINK-LLWRITE] Retransmission number %d...\n", currenttransmission);
+            printf("[LINK-LLWRITE] Timeout! Retransmission number %d...\n", currenttransmission);
         }
     }
 
     free(frame);
     if (accepted) return frameSize;
     else {
+        printf("[LINK-LLWRITE] Failed to transmit frame after %d attempts. Closing connection...\n", retransmitions);
         llclose();
         return -1;
     } 
