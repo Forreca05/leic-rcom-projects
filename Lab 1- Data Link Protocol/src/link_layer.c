@@ -179,7 +179,6 @@ int llopen(LinkLayer connectionParameters)
                 }
 
                 connectionParameters.nRetransmissions--;
-                printf("OLA\n");
             }
             if (state != STOP) {
                 printf("[LINK-TX] Failed to establish connection after %d attempts.\n", attempt - 1);
