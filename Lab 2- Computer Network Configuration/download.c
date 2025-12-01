@@ -264,7 +264,19 @@ int main(int argc, char *argv[]) {
 
     int sockserver = createsocket(ipserver, FTP_PORT);
 
-    
+    char retr_command[100];
+    sprintf(retr_command, "RETR %s\r\n", url.);
+    write(sock, retr_command, strlen(retr_command));
+    printf("%s", retr_command);
+
+    size_t bytes_readserver = read(sock, buf, sizeof(buf) - 1);
+    buf[bytes_readserver] = '\0';
+    printf("%s\n", buf);
+    if (strncmp(buf, "150", 3) != 0) {
+        printf("Error: Unexpected reply from connection.\n");
+        exit(-1);
+    }
+
 
     return 0;
 }
