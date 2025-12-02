@@ -212,12 +212,12 @@ int main(int argc, char *argv[]) {
     buf[bytes_readserver] = '\0';
     printf("%s", buf);
 
-    if (strncmp(buf, "150", 3) != 0) {
-        printf("Error: Unexpected reply from connection.\n");
+    if (strncmp(buf, "125", 3) != 0 && strncmp(buf, "150", 3) != 0) {
+        printf("Error: expected reply 150 or 125.\n");
         exit(-1);
     }
 
-    FILE *file_fd = fopen(url.file, "wb");
+    FILE *file_fd = fopen("file", "wb");
     if (file_fd == NULL) {
         perror("Unable to create local file");
         exit(EXIT_FAILURE);
@@ -245,7 +245,7 @@ int main(int argc, char *argv[]) {
     printf("%s", buf);
 
     if (strncmp(buf, "226", 3) != 0) {
-        printf("Error: Unexpected reply from connection.\n");
+        printf("Error: expected reply 226.\n");
         exit(-1);
     }
 
@@ -258,7 +258,7 @@ int main(int argc, char *argv[]) {
     printf("%s", buf);
 
     if (strncmp(buf, "221", 3) != 0) {
-        printf("Error: Unexpected reply from connection.\n");
+        printf("Error: expected reply 221.\n");
         exit(-1);
     }
 
