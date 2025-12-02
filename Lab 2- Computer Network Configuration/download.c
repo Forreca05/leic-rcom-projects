@@ -177,41 +177,6 @@ int main(int argc, char *argv[]) {
         exit(-1);
     }
 
-    char changing_command[100] = "CWD debian\r\n";
-    write(sock, changing_command, strlen(changing_command));
-    printf("%s",changing_command);
-
-    size_t bytes_read4 = read(sock, buf, sizeof(buf) - 1);
-    buf[bytes_read4] = '\0';
-    printf("%s\n", buf);
-    if (strncmp(buf, "250", 3) != 0) {
-        printf("Error: Unexpected reply from connection.\n");
-        exit(-1);
-    }
-
-    char binary_command[100] = "TYPE I\r\n";
-    write(sock, binary_command, strlen(binary_command));
-    printf("%s",binary_command);
-
-    size_t bytes_read5 = read(sock, buf, sizeof(buf) - 1);
-    buf[bytes_read5] = '\0';
-    printf("%s\n", buf);
-    if (strncmp(buf, "200", 3) != 0) {
-        printf("Error: Unexpected reply from connection.\n");
-        exit(-1);
-    }
-
-    char size_command[100] = "SIZE README\r\n";
-    write(sock, size_command, strlen(size_command));
-    printf("%s",size_command);
-
-    size_t bytes_read6 = read(sock, buf, sizeof(buf) - 1);
-    buf[bytes_read6] = '\0';
-    printf("%s\n", buf);
-    if (strncmp(buf, "213", 3) != 0) {
-        printf("Error: Unexpected reply from connection.\n");
-        exit(-1);
-    }
 
     char passive_command[100] = "PASV\r\n";
     write(sock, passive_command, strlen(passive_command));
@@ -257,17 +222,18 @@ int main(int argc, char *argv[]) {
     }
 
     int port = 256 * p1 + p2;
-    printf("%d %d %d %d %d %d %d", h1, h2, h3, h4, p1, p2, port);
+    printf("%d %d %d %d %d %d %d\n", h1, h2, h3, h4, p1, p2, port);
     
     char ipserver[32];
     sprintf(ipserver, "%d.%d.%d.%d", h1, h2, h3, h4);
 
-    int sockserver = createsocket(ipserver, FTP_PORT);
+    int sockserver = createsocket(ipserver, port);
 
     char retr_command[100];
-    sprintf(retr_command, "RETR %s\r\n", url.);
+    // agora envia RETR só com o ficheiro
+    sprintf(retr_command, "RETR %s\r\n", url.path);
     write(sock, retr_command, strlen(retr_command));
-    printf("%s", retr_command);
+
 
     size_t bytes_readserver = read(sock, buf, sizeof(buf) - 1);
     buf[bytes_readserver] = '\0';
@@ -276,7 +242,41 @@ int main(int argc, char *argv[]) {
         printf("Error: Unexpected reply from connection.\n");
         exit(-1);
     }
+    printf("%s\nReceiving File....\n", buf);
 
+    // Abrir ficheiro em modo binário
+    FILE *file_fd = fopen(url.file, "wb");
+    if (file_fd == NULL) {
+        perror("Unable to create local file");
+        exit(EXIT_FAILURE);
+    }
+
+    int n = 0;
+    // Ler do socket de dados e escrever no ficheiro
+    while ((n = read(sockserver, buf, sizeof(buf))) > 0) {
+        size_t written = fwrite(buf, 1, n, file_fd);
+        if (written != n) {
+            perror("Error writing to file");
+            fclose(file_fd);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    printf("The file was received!\n");
+
+    // Fechar ficheiro
+    fclose(file_fd);
+
+    // Fechar sockets
+    if (close(sock) < 0) {
+        perror("Error closing control socket");
+        exit(-1);
+    }
+
+    if (close(sockserver) < 0) {
+        perror("Error closing data socket");
+        exit(-1);
+    }
 
     return 0;
 }

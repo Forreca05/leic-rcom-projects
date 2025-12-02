@@ -5,7 +5,7 @@ typedef struct URL {
     char host[128];
     char name[64];
     char password[64];
-    char path[512];
+    char path[64];
     char file[256];
 } URL;
 
