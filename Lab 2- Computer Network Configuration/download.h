@@ -2,9 +2,9 @@
 #define DOWNLOAD_H
 
 typedef struct URL {
-    char host[128];
-    char name[64];
+    char user[64];
     char password[64];
+    char host[128];
     char path[64];
     char file[256];
 } URL;

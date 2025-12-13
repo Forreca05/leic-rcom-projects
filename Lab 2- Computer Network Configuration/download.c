@@ -13,11 +13,11 @@
 int parse(char *link, URL *url) {
     char *input = link;
 
-    strcpy(url->name, "anonymous");
+    strcpy(url->user, "anonymous");
     strcpy(url->password, "anonymous@");
 
     if (strncmp(input, "ftp://", 6) != 0) {
-        printf("URL inválido\n");
+        printf("[Parsing] Invalid URL (not FTP!)\n");
         return -1;
     }
 
@@ -27,21 +27,22 @@ int parse(char *link, URL *url) {
     char *slash  = strchr(input, '/');
 
     if (slash == NULL) {
-        printf("URL inválido: falta /path\n");
+        printf("[Parsing] Invalid URL (missing '/')\n");
         return -1;
     }
 
+    // URL matches type: ftp://user:password@host/path
     if (arroba != NULL && arroba < slash) {
         char *doispontos = strchr(input, ':');
 
         if (doispontos == NULL || doispontos > arroba) {
-            printf("Formato user:password inválido\n");
+            printf("[Parsing] Invalid User/Password\n");
             return -1;
         }
 
         int user_len = doispontos - input;
-        strncpy(url->name, input, user_len);
-        url->name[user_len] = '\0';
+        strncpy(url->user, input, user_len);
+        url->user[user_len] = '\0';
 
         int pass_len = arroba - doispontos - 1;
         strncpy(url->password, doispontos + 1, pass_len);
@@ -50,11 +51,12 @@ int parse(char *link, URL *url) {
         input = arroba + 1;
         slash = strchr(input, '/');
         if (slash == NULL) {
-            printf("URL inválido\n");
+            printf("[Parsing] Invalid URL (missing /path!)\n");
             return -1;
         }
     }
 
+    // Also supports anonymous login (ftp://host/path)
     int host_len = slash - input;
     strncpy(url->host, input, host_len);
     url->host[host_len] = '\0';
@@ -77,11 +79,13 @@ int createsocket(const char *adr, int port) {
     server_addr.sin_addr.s_addr = inet_addr(adr);
     server_addr.sin_port        = htons(port);
 
+    // Creating the socket
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket()");
         exit(-1);
     }
 
+    // Estabilishing a connection with the server
     if (connect(sockfd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
         perror("connect()");
         exit(-1);
@@ -107,7 +111,7 @@ int main(int argc, char *argv[]) {
     }
 
     printf("USER=%s\nPASS=%s\nHOST=%s\nPATH=%s\nFILE=%s\n",
-           url.name, url.password, url.host, url.path, url.file);
+           url.user, url.password, url.host, url.path, url.file);
 
     struct hostent *h = gethostbyname(url.host);
 
@@ -133,7 +137,7 @@ int main(int argc, char *argv[]) {
     }
 
     char user_command[100];
-    sprintf(user_command, "USER %s\r\n", url.name);
+    sprintf(user_command, "USER %s\r\n", url.user);
     write(sock, user_command, strlen(user_command));
     printf("%s", user_command);
 
@@ -217,7 +221,7 @@ int main(int argc, char *argv[]) {
         exit(-1);
     }
 
-    FILE *file_fd = fopen("file", "wb");
+    FILE *file_fd = fopen(url.file, "wb");
     if (file_fd == NULL) {
         perror("Unable to create local file");
         exit(EXIT_FAILURE);
