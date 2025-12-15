@@ -13,11 +13,11 @@
 int parse(char *link, URL *url) {
     char *input = link;
 
-    strcpy(url->name, "anonymous");
+    strcpy(url->user, "anonymous");
     strcpy(url->password, "anonymous@");
 
     if (strncmp(input, "ftp://", 6) != 0) {
-        printf("URL inválido\n");
+        printf("[Parsing] Invalid URL (not FTP!)\n");
         return -1;
     }
 
@@ -27,21 +27,22 @@ int parse(char *link, URL *url) {
     char *slash  = strchr(input, '/');
 
     if (slash == NULL) {
-        printf("URL inválido: falta /path\n");
+        printf("[Parsing] Invalid URL (missing '/')\n");
         return -1;
     }
 
+    // If URL matches type: ftp://user:password@host/path
     if (arroba != NULL && arroba < slash) {
         char *doispontos = strchr(input, ':');
 
         if (doispontos == NULL || doispontos > arroba) {
-            printf("Formato user:password inválido\n");
+            printf("[Parsing] Invalid User/Password\n");
             return -1;
         }
 
         int user_len = doispontos - input;
-        strncpy(url->name, input, user_len);
-        url->name[user_len] = '\0';
+        strncpy(url->user, input, user_len);
+        url->user[user_len] = '\0';
 
         int pass_len = arroba - doispontos - 1;
         strncpy(url->password, doispontos + 1, pass_len);
@@ -50,11 +51,12 @@ int parse(char *link, URL *url) {
         input = arroba + 1;
         slash = strchr(input, '/');
         if (slash == NULL) {
-            printf("URL inválido\n");
+            printf("[Parsing] Invalid URL (missing /path!)\n");
             return -1;
         }
     }
 
+    // Also supports anonymous login (ftp://host/path)
     int host_len = slash - input;
     strncpy(url->host, input, host_len);
     url->host[host_len] = '\0';
@@ -77,11 +79,13 @@ int createsocket(const char *adr, int port) {
     server_addr.sin_addr.s_addr = inet_addr(adr);
     server_addr.sin_port        = htons(port);
 
+    // Creating the socket
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket()");
         exit(-1);
     }
 
+    // Estabilishing a connection with the server
     if (connect(sockfd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
         perror("connect()");
         exit(-1);
@@ -106,8 +110,8 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    printf("USER=%s\nPASS=%s\nHOST=%s\nPATH=%s\nFILE=%s\n",
-           url.name, url.password, url.host, url.path, url.file);
+    printf("USER = %s\nPASS = %s\nHOST = %s\nPATH = %s\nFILE = %s\n",
+           url.user, url.password, url.host, url.path, url.file);
 
     struct hostent *h = gethostbyname(url.host);
 
@@ -117,23 +121,24 @@ int main(int argc, char *argv[]) {
     }
 
     char *ip = inet_ntoa(*((struct in_addr *) h->h_addr));
-    printf("IP = %s\n", ip);
+    printf("IP = %s\n\n", ip);
 
     int sock = createsocket(ip, FTP_PORT);
-    printf("Ligado ao servidor FTP!\n");
+    printf("Connected to FTP server!\n");
 
     usleep(100000);
     size_t bytes_read = read(sock, buf, 500);
     buf[bytes_read] = '\0';
     printf("%s", buf);
 
-    if (strncmp(buf, "220", 3) != 0) {
-        printf("Error: Unexpected reply from connection.\n");
+    if (strncmp(buf, SERVICE_READY_CODE, 3) != 0) {
+        printf("Error: Can't connect to the server.\n");
         exit(-1);
     }
 
-    char user_command[100];
-    sprintf(user_command, "USER %s\r\n", url.name);
+    // User Command
+    char user_command[CMD_SIZE];
+    sprintf(user_command, "USER %s\r\n", url.user);
     write(sock, user_command, strlen(user_command));
     printf("%s", user_command);
 
@@ -141,12 +146,13 @@ int main(int argc, char *argv[]) {
     buf[bytes_user] = '\0';
     printf("%s", buf);
 
-    if (strncmp(buf, "331", 3) != 0) {
-        printf("Error: Unexpected reply from connection.\n");
+    if (strncmp(buf, USERNAME_OK_CODE, 3) != 0) {
+        printf("Error: USER command rejected or unexpected server reply.\n");
         exit(-1);
     }
 
-    char password_command[100];
+    // Password Command (and Login)
+    char password_command[CMD_SIZE];
     sprintf(password_command, "PASS %s\r\n", url.password);
     write(sock, password_command, strlen(password_command));
     printf("%s", password_command);
@@ -155,21 +161,22 @@ int main(int argc, char *argv[]) {
     buf[bytes_password] = '\0';
     printf("%s", buf);
 
-    if (strncmp(buf, "230", 3) != 0) {
-        printf("Error: Unexpected reply from connection.\n");
+    if (strncmp(buf, LOGIN_SUCCESS_CODE, 3) != 0) {
+        printf("Error: Login failed or unexpected server reply after PASS command.\n");
         exit(-1);
     }
 
-    char passive_command[100] = "PASV\r\n";
-    write(sock, passive_command, strlen(passive_command));
-    printf("%s", passive_command);
+    // PASV Command
+    const char* pasv_command = "PASV\r\n";
+    write(sock, pasv_command, strlen(pasv_command));
+    printf("%s", pasv_command);
 
     size_t bytes_passive = read(sock, buf, sizeof(buf) - 1);
     buf[bytes_passive] = '\0';
     printf("%s", buf);
 
-    if (strncmp(buf, "227", 3) != 0) {
-        printf("Error: Unexpected reply from connection.\n");
+    if (strncmp(buf, PASV_MODE_CODE, 3) != 0) {
+        printf("Error: Failed to enter passive mode.\n");
         exit(-1);
     }
 
@@ -202,9 +209,13 @@ int main(int argc, char *argv[]) {
     sprintf(ipserver, "%d.%d.%d.%d", h1, h2, h3, h4);
     int port = 256 * p1 + p2;
 
+    printf("IP SERVER = %s\n", ipserver);
+    printf("PORT = %d\n", port);
+
     int sockserver = createsocket(ipserver, port);
 
-    char retr_command[100];
+    // RETR Command
+    char retr_command[CMD_SIZE];
     sprintf(retr_command, "RETR %s\r\n", url.path);
     write(sock, retr_command, strlen(retr_command));
 
@@ -213,11 +224,11 @@ int main(int argc, char *argv[]) {
     printf("%s", buf);
 
     if (strncmp(buf, "125", 3) != 0 && strncmp(buf, "150", 3) != 0) {
-        printf("Error: expected reply 150 or 125.\n");
+        printf("Error: Server did not accept RETR command.\n");
         exit(-1);
     }
 
-    FILE *file_fd = fopen("file", "wb");
+    FILE *file_fd = fopen(url.file, "wb");
     if (file_fd == NULL) {
         perror("Unable to create local file");
         exit(EXIT_FAILURE);
@@ -244,12 +255,13 @@ int main(int argc, char *argv[]) {
     buf[bytes_readquit] = '\0';
     printf("%s", buf);
 
-    if (strncmp(buf, "226", 3) != 0) {
-        printf("Error: expected reply 226.\n");
+    if (strncmp(buf, TRANSFER_COMPLETE_CODE, 3) != 0) {
+        printf("Error: File transfer not completed successfully.\n");
         exit(-1);
     }
 
-    char quit_command[100] = "QUIT\r\n";
+    // Quit Command
+    const char* quit_command = "QUIT\r\n";
     write(sock, quit_command, strlen(quit_command));
     printf("%s", quit_command);
 
@@ -257,8 +269,8 @@ int main(int argc, char *argv[]) {
     buf[goodbye] = '\0';
     printf("%s", buf);
 
-    if (strncmp(buf, "221", 3) != 0) {
-        printf("Error: expected reply 221.\n");
+    if (strncmp(buf, QUIT_SUCCESS_CODE, 3) != 0) {
+        printf("Error: Server did not acknowledge QUIT command properly.\n");
         exit(-1);
     }
 
