@@ -1,13 +1,13 @@
-# 🛰️ Computer Networks (RCOM) – Labs
+# Computer Networks (RCOM) – Labs
 
-## 🧠 About
+## About
 
 The **RCOM** course focuses on understanding, designing, and implementing computer communication systems.
 The labs provide hands-on experience with real communication protocols, low-level programming, and practical network configuration in Linux.
 
 ---
 
-# 🔬 Labs Overview
+# Labs Overview
 
 ---
 
@@ -15,7 +15,7 @@ The labs provide hands-on experience with real communication protocols, low-leve
 
 In this lab, a custom **Data Link Layer protocol** is implemented to enable reliable communication between two computers connected through a serial port (RS232).
 
-### 🎯 **Main Objectives**
+### **Main Objectives**
 
 * Build a **byte-oriented framed protocol**
 * Implement:
@@ -30,7 +30,7 @@ In this lab, a custom **Data Link Layer protocol** is implemented to enable reli
 * Implement **timeouts** and **retransmissions**
 * Transfer a binary file (e.g., `penguin.gif`) using the implemented protocol
 
-### 📦 **Components Developed**
+### **Components Developed**
 
 * `llopen()`
 * `llwrite()`
@@ -48,11 +48,11 @@ The lab is divided into **two parts**, according to the official guide.
 
 ---
 
-# 📥 **Lab 2 – Part 1: FTP Client Implementation**
+# **Lab 2 – Part 1: FTP Client Implementation**
 
 This part consists of developing a C application capable of downloading a file from an FTP server using TCP sockets and FTP commands defined in **RFC 959**.
 
-### 🎯 **Goal**
+### **Goal**
 
 Creation of an application:
 
@@ -62,9 +62,9 @@ Creation of an application:
 
 which downloads the specified file and stores it locally.
 
-### 📌 **Required Features**
+### **Required Features**
 
-#### ✔ URL Parsing (RFC 1738)
+#### URL Parsing (RFC 1738)
 
 Supported format:
 
@@ -77,17 +77,17 @@ If no credentials are provided:
 * `user = "anonymous"`
 * `password = "anonymous@"`
 
-#### ✔ DNS Resolution
+#### DNS Resolution
 
 Using:
 
 * `gethostbyname()`
 
-#### ✔ Control Connection (TCP Port 21)
+#### Control Connection (TCP Port 21)
 
 Establish a TCP connection to the server’s FTP control port.
 
-#### ✔ FTP Command Exchange
+#### FTP Command Exchange
 
 Send and interpret FTP commands and responses:
 
@@ -107,7 +107,7 @@ Relevant response codes:
 * **150 / 125** – Opening data connection
 * **226** – Transfer complete
 
-#### ✔ Passive Mode Interpretation
+#### Passive Mode Interpretation
 
 The server responds with:
 
@@ -122,7 +122,7 @@ IP   = h1.h2.h3.h4
 PORT = p1*256 + p2
 ```
 
-#### ✔ Data Connection
+#### Data Connection
 
 A second TCP connection must be opened to the data port returned by PASV.
 
@@ -130,19 +130,19 @@ A second TCP connection must be opened to the data port returned by PASV.
 
 The file’s binary contents must be received through the data socket and saved to disk.
 
-#### ✔ Connection Termination
+#### Connection Termination
 
 Both connections (control and data) must be closed correctly following protocol rules.
 
 ---
 
-# 🧪 **Lab 2 – Part 2: Network Experiments**
+# **Lab 2 – Part 2: Network Experiments**
 
 This part involves performing **six practical experiments** to explore and analyze network behavior in a controlled virtual environment.
 
 ---
 
-## 🔍 **Experiment 1 – Network Interfaces**
+## **Experiment 1 – Network Interfaces**
 
 Objectives:
 
@@ -158,7 +158,7 @@ Tools:
 
 ---
 
-## 🔍 **Experiment 2 – Routing and Gateway**
+## **Experiment 2 – Routing and Gateway**
 
 Objectives:
 
@@ -174,7 +174,7 @@ Tools:
 
 ---
 
-## 🔍 **Experiment 3 – NAT and Virtual Machine Networking**
+## **Experiment 3 – NAT and Virtual Machine Networking**
 
 Objectives:
 
@@ -188,7 +188,7 @@ Tools:
 
 ---
 
-## 🔍 **Experiment 4 – DNS Resolution**
+## **Experiment 4 – DNS Resolution**
 
 Objectives:
 
@@ -203,7 +203,7 @@ Tools:
 
 ---
 
-## 🔍 **Experiment 5 – TCP Connections**
+## **Experiment 5 – TCP Connections**
 
 Objectives:
 
@@ -217,7 +217,7 @@ Tools:
 
 ---
 
-## 🔍 **Experiment 6 – FTP Download Analysis**
+## **Experiment 6 – FTP Download Analysis**
 
 Objectives:
 
@@ -232,7 +232,7 @@ Tools:
 
 ---
 
-# 🧰 Technologies Used
+# Technologies Used
 
 * C programming (POSIX sockets)
 * Serial communication (Lab 1)
@@ -243,7 +243,7 @@ Tools:
 
 ---
 
-# 👨‍💻 Authors
+# Authors
 
 * *João Ferreira*
 * *Gonçalo Santos*
