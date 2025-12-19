@@ -61,7 +61,7 @@ int parse(char *link, URL *url) {
     strncpy(url->host, input, host_len);
     url->host[host_len] = '\0';
 
-    strcpy(url->path, slash + 1);
+    strcpy(url->path, slash);
 
     char *last = strrchr(url->path, '/');
     if (last) strcpy(url->file, last + 1);
